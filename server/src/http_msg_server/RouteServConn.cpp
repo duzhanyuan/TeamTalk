@@ -1,9 +1,10 @@
 /*
- * RouteServConn.cpp
- *
- *  Created on: 2013-7-8
- *      Author: ziteng@mogujie.com
+ * @File: RouteServConn.cpp
+ * @Author: xiaominfc
+ * @Date: 2020-09-02 17:01:15
+ * @Description: implement RouteServConn
  */
+
 
 #include "RouteServConn.h"
 #include "DBServConn.h"
@@ -12,10 +13,10 @@
 #include "IM.Server.pb.h"
 #include "IM.Other.pb.h"
 #include "ImPduBase.h"
+
 namespace HTTP {
 
 static ConnMap_t g_route_server_conn_map;
-
 static serv_info_t* g_route_server_list;
 static uint32_t g_route_server_count;
 static CRouteServConn* g_master_rs_conn = NULL;
@@ -23,6 +24,10 @@ static CRouteServConn* g_master_rs_conn = NULL;
 
 void route_server_conn_timer_callback(void* callback_data, uint8_t msg, uint32_t handle, void* pParam)
 {
+	(void)callback_data;
+	(void)msg;
+	(void)handle;
+	(void)pParam;
 	ConnMap_t::iterator it_old;
 	CRouteServConn* pConn = NULL;
 	uint64_t cur_time = get_tick_count();
@@ -99,12 +104,12 @@ void update_master_route_serv_conn()
 	g_master_rs_conn =  pOldestConn;
 
 	if (g_master_rs_conn) {
-        IM::Server::IMRoleSet msg;
-        msg.set_master(1);
-        CImPdu pdu;
-        pdu.SetPBMsg(&msg);
-        pdu.SetServiceId(IM::BaseDefine::SID_OTHER);
-        pdu.SetCommandId(IM::BaseDefine::CID_OTHER_ROLE_SET);
+		IM::Server::IMRoleSet msg;
+		msg.set_master(1);
+		CImPdu pdu;
+		pdu.SetPBMsg(&msg);
+		pdu.SetServiceId(IM::BaseDefine::SID_OTHER);
+		pdu.SetCommandId(IM::BaseDefine::CID_OTHER_ROLE_SET);
 		g_master_rs_conn->SendPdu(&pdu);
 	}
 }
@@ -124,10 +129,8 @@ CRouteServConn::~CRouteServConn()
 void CRouteServConn::Connect(const char* server_ip, uint16_t server_port, uint32_t idx)
 {
 	log("Connecting to RouteServer %s:%d ", server_ip, server_port);
-
 	m_serv_idx = idx;
-	m_handle = netlib_connect(server_ip, server_port, imconn_callback, (void*)&g_route_server_conn_map);
-
+	m_handle = tcp_client_conn(server_ip,server_port,this);
 	if (m_handle != NETLIB_INVALID_HANDLE) {
 		g_route_server_conn_map.insert(make_pair(m_handle, this));
 	}
@@ -139,7 +142,7 @@ void CRouteServConn::Close()
 
 	m_bOpen = false;
 	if (m_handle != NETLIB_INVALID_HANDLE) {
-		netlib_close(m_handle);
+		CImConn::Close();
 		g_route_server_conn_map.erase(m_handle);
 	}
 
@@ -172,11 +175,11 @@ void CRouteServConn::OnClose()
 void CRouteServConn::OnTimer(uint64_t curr_tick)
 {
 	if (curr_tick > m_last_send_tick + SERVER_HEARTBEAT_INTERVAL) {
-        IM::Other::IMHeartBeat msg;
-        CImPdu pdu;
-        pdu.SetPBMsg(&msg);
-        pdu.SetServiceId(IM::BaseDefine::SID_OTHER);
-        pdu.SetCommandId(IM::BaseDefine::CID_OTHER_HEARTBEAT);
+		IM::Other::IMHeartBeat msg;
+		CImPdu pdu;
+		pdu.SetPBMsg(&msg);
+		pdu.SetServiceId(IM::BaseDefine::SID_OTHER);
+		pdu.SetCommandId(IM::BaseDefine::CID_OTHER_HEARTBEAT);
 		SendPdu(&pdu);
 	}
 
@@ -188,6 +191,7 @@ void CRouteServConn::OnTimer(uint64_t curr_tick)
 
 void CRouteServConn::HandlePdu(CImPdu* pPdu)
 {
+	(void)pPdu;
 }
 
 };

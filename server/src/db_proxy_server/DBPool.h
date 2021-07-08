@@ -17,6 +17,8 @@
 
 #define MAX_ESCAPE_STRING_LEN	10240
 
+#define my_bool bool
+
 class CResultSet {
 public:
 	CResultSet(MYSQL_RES* res);
@@ -48,10 +50,11 @@ public:
 
 	void SetParam(uint32_t index, int& value);
 	void SetParam(uint32_t index, uint32_t& value);
-    void SetParam(uint32_t index, string& value);
-    void SetParam(uint32_t index, const string& value);
+	void SetParam(uint32_t index, string& value);
+	void SetParam(uint32_t index, const string& value);
 
 	bool ExecuteUpdate();
+    CResultSet* ExecuteQuery();
 	uint32_t GetInsertId();
 private:
 	MYSQL_STMT*	m_stmt;

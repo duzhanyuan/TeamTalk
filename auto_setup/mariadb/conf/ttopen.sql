@@ -22,21 +22,22 @@ USE teamtalk;
 DROP TABLE IF EXISTS `IMAdmin`;
 
 CREATE TABLE `IMAdmin` (
-  `id` mediumint(6) unsigned NOT NULL AUTO_INCREMENT,
+  `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
   `uname` varchar(40) NOT NULL COMMENT '用户名',
   `pwd` char(32) NOT NULL COMMENT '密码',
+  `type` int(4) unsigned DEFAULT '0' COMMENT '管理员类型 1:admin 2:user',
   `status` tinyint(2) unsigned NOT NULL DEFAULT '0' COMMENT '用户状态 0 :正常 1:删除 可扩展',
-  `created` int(11) unsigned NOT NULL DEFAULT '0' COMMENT '创建时间´',
-  `updated` int(11) unsigned NOT NULL DEFAULT '0' COMMENT '更新时间´',
+  `created` int(11) unsigned NOT NULL DEFAULT '0' COMMENT '创建时间',
+  `updated` int(11) unsigned NOT NULL DEFAULT '0' COMMENT '更新时间',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 LOCK TABLES `IMAdmin` WRITE;
 /*!40000 ALTER TABLE `IMAdmin` DISABLE KEYS */;
 
-INSERT INTO `IMAdmin` (`id`, `uname`, `pwd`, `status`, `created`, `updated`)
+INSERT INTO `IMAdmin` (`id`, `uname`, `pwd`, `type`, `status`, `created`, `updated`)
 VALUES
-	(1,'admin','21232f297a57a5a743894a0e4a801fc3',0,0,0);
+	(1,'admin','21232f297a57a5a743894a0e4a801fc3',1,0,0,0);
 
 /*!40000 ALTER TABLE `IMAdmin` ENABLE KEYS */;
 UNLOCK TABLES;
@@ -73,6 +74,7 @@ CREATE TABLE `IMDepart` (
   `status` int(11) unsigned NOT NULL DEFAULT '0' COMMENT '状态',
   `created` int(11) unsigned NOT NULL COMMENT '创建时间',
   `updated` int(11) unsigned NOT NULL COMMENT '更新时间',
+  `pid` int(11) NOT NULL DEFAULT '0' COMMENT '项目ID',
   PRIMARY KEY (`id`),
   KEY `idx_departName` (`departName`),
   KEY `idx_priority_status` (`priority`,`status`)
@@ -93,6 +95,7 @@ CREATE TABLE `IMDiscovery` (
   `status` int(11) unsigned NOT NULL DEFAULT '0' COMMENT '状态',
   `created` int(11) unsigned NOT NULL COMMENT '创建时间',
   `updated` int(11) unsigned NOT NULL COMMENT '更新时间',
+  `pid` int(11) NOT NULL DEFAULT '0' COMMENT '项目ID',
   PRIMARY KEY (`id`),
   KEY `idx_itemName` (`itemName`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
@@ -115,6 +118,7 @@ CREATE TABLE `IMGroup` (
   `lastChated` int(11) unsigned NOT NULL DEFAULT '0' COMMENT '最后聊天时间',
   `updated` int(11) unsigned NOT NULL DEFAULT '0' COMMENT '更新时间',
   `created` int(11) unsigned NOT NULL DEFAULT '0' COMMENT '创建时间',
+  `pid` int(11) NOT NULL DEFAULT '0' COMMENT '项目ID',
   PRIMARY KEY (`id`),
   KEY `idx_name` (`name`(191)),
   KEY `idx_creator` (`creator`)
@@ -492,6 +496,28 @@ CREATE TABLE `IMMessage_7` (
   KEY `idx_fromId_toId_created` (`fromId`,`toId`,`status`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
+
+# Dump of table IMTransmitFile
+# ------------------------------------------------------------
+
+DROP TABLE IF EXISTS `IMTransmitFile`;
+
+CREATE TABLE `IMTransmitFile` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `fromId` int(11) unsigned NOT NULL COMMENT '发送用户的id',
+  `toId` int(11) unsigned NOT NULL COMMENT '接收用户的id',
+  `fileName` varchar(4096) COLLATE utf8mb4_bin DEFAULT '' COMMENT '文件名称',
+  `taskId` varchar(128) COLLATE utf8mb4_bin DEFAULT '' COMMENT 'taskId',
+  `size` int(11) unsigned NOT NULL DEFAULT '0' COMMENT '文件大小',
+  `status` tinyint(1) unsigned NOT NULL DEFAULT '0' COMMENT '0正常 1被删除',
+  `updated` int(11) unsigned NOT NULL COMMENT '更新时间',
+  `created` int(11) unsigned NOT NULL COMMENT '创建时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_fromId_toId_created` (`fromId`,`toId`,`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+
+
 # Dump of table IMRecentSession
 # ------------------------------------------------------------
 
@@ -550,9 +576,34 @@ CREATE TABLE `IMUser` (
   `updated` int(11) unsigned NOT NULL COMMENT '更新时间',
   `push_shield_status` tinyint(1) unsigned NOT NULL DEFAULT '0' COMMENT '0关闭勿扰 1开启勿扰',
   `sign_info` varchar(128) COLLATE utf8mb4_bin NOT NULL DEFAULT '' COMMENT '个性签名',
+  `pid` int(11) NOT NULL DEFAULT '0' COMMENT '项目ID',
   PRIMARY KEY (`id`),
   KEY `idx_domain` (`domain`),
   KEY `idx_name` (`name`),
   KEY `idx_phone` (`phone`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+
+
+
+# Dump of table IMProject
+# ------------------------------------------------------------
+
+DROP TABLE IF EXISTS `IMProject`;
+
+
+CREATE TABLE `IMProject` (
+  `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(40) NOT NULL DEFAULT '' COMMENT '项目名称',
+  `type` int(11) NOT NULL,
+	`appkey` varchar(16) NOT NULL DEFAULT '',
+  `appsecret` varchar(20) NOT NULL DEFAULT '',
+  `status` tinyint(2) NOT NULL DEFAULT '0',
+  `creatorId` int(11) NOT NULL,
+  `created` int(11) NOT NULL,
+  `updated` int(11) NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+
 

@@ -1,8 +1,8 @@
 /*
  * msg_server.cpp
  *
- *  Created on: 2013-6-21
- *      Author: ziteng@mogujie.com
+ * Created on: 2013-6-21
+ * Author: ziteng@mogujie.com
  */
 
 #include "netlib.h"
@@ -14,33 +14,27 @@
 #include "DBServConn.h"
 #include "PushServConn.h"
 #include "FileServConn.h"
-//#include "version.h"
+#include "EventSocket.h"
 
 #define DEFAULT_CONCURRENT_DB_CONN_CNT  10
 
 CAes *pAes;
 
-// for client connect in
-void msg_serv_callback(void* callback_data, uint8_t msg, uint32_t handle, void* pParam)
-{
-	if (msg == NETLIB_MSG_CONNECT)
-	{
-		CMsgConn* pConn = new CMsgConn();
-		pConn->OnConnect(handle);
-	}
-	else
-	{
-		log("!!!error msg: %d ", msg);
-	}
-}
 
 
 int main(int argc, char* argv[])
 {
-	if ((argc == 2) && (strcmp(argv[1], "-v") == 0)) {
-//		printf("Server Version: MsgServer/%s\n", VERSION);
-		printf("Server Build: %s %s\n", __DATE__, __TIME__);
-		return 0;
+	PRINTSERVERVERSION()
+	string config_path("msgserver.conf");
+
+	if(argc == 3) {
+		if(strcmp(argv[1], "-c") == 0) {
+			config_path.clear();
+			config_path.append(argv[2]);
+		}else{
+			printf("error arguments,please enter %s -c <config_path>",argv[0]);
+			return 0;
+		}
 	}
 
 	signal(SIGPIPE, SIG_IGN);
@@ -48,14 +42,15 @@ int main(int argc, char* argv[])
 
 	log("MsgServer max files can open: %d ", getdtablesize());
 
-	CConfigFileReader config_file("msgserver.conf");
+	//CConfigFileReader config_file("msgserver.conf");
+	CConfigFileReader config_file(config_path.c_str());
 
 	char* listen_ip = config_file.GetConfigName("ListenIP");
 	char* str_listen_port = config_file.GetConfigName("ListenPort");
 	char* ip_addr1 = config_file.GetConfigName("IpAddr1");	// 电信IP
 	char* ip_addr2 = config_file.GetConfigName("IpAddr2");	// 网通IP
 	char* str_max_conn_cnt = config_file.GetConfigName("MaxConnCnt");
-    char* str_aes_key = config_file.GetConfigName("aesKey");
+	char* str_aes_key = config_file.GetConfigName("aesKey");
 	uint32_t db_server_count = 0;
 	serv_info_t* db_server_list = read_server_config(&config_file, "DBServerIP", "DBServerPort", db_server_count);
 
@@ -64,21 +59,19 @@ int main(int argc, char* argv[])
 
 	uint32_t route_server_count = 0;
 	serv_info_t* route_server_list = read_server_config(&config_file, "RouteServerIP", "RouteServerPort", route_server_count);
-
-    uint32_t push_server_count = 0;
-    serv_info_t* push_server_list = read_server_config(&config_file, "PushServerIP",
+	
+	uint32_t push_server_count = 0;
+	serv_info_t* push_server_list = read_server_config(&config_file, "PushServerIP",
                                                        "PushServerPort", push_server_count);
-    
-    uint32_t file_server_count = 0;
-    serv_info_t* file_server_list = read_server_config(&config_file, "FileServerIP",
+	uint32_t file_server_count = 0;
+	serv_info_t* file_server_list = read_server_config(&config_file, "FileServerIP",
                                                        "FileServerPort", file_server_count);
-    
-    if (!str_aes_key || strlen(str_aes_key)!=32) {
-        log("aes key is invalied");
-        return -1;
-    }
+	if (!str_aes_key || strlen(str_aes_key)!=32) {
+		log("aes key is invalied");
+		return -1;
+	}
  
-    pAes = new CAes(str_aes_key);
+	pAes = new CAes(str_aes_key);
     
 	// 必须至少配置2个BusinessServer实例, 一个用于用户登录业务，一个用于其他业务
 	// 这样当其他业务量非常繁忙时，也不会影响客服端的登录验证
@@ -104,7 +97,7 @@ int main(int argc, char* argv[])
 	}
 
 	if (!listen_ip || !str_listen_port || !ip_addr1) {
-		log("config file miss, exit... ");
+		log("config file miss, exit... for path:%s ",config_path.c_str());
 		return -1;
 	}
 
@@ -123,7 +116,7 @@ int main(int argc, char* argv[])
 
 	CStrExplode listen_ip_list(listen_ip, ';');
 	for (uint32_t i = 0; i < listen_ip_list.GetItemCnt(); i++) {
-		ret = netlib_listen(listen_ip_list.GetItem(i), listen_port, msg_serv_callback, NULL);
+		ret = tcp_server_listen(listen_ip_list.GetItem(i), listen_port, new IMConnEventDefaultFactory<CMsgConn>());
 		if (ret == NETLIB_ERROR)
 			return ret;
 	}
@@ -132,19 +125,17 @@ int main(int argc, char* argv[])
 
 	init_msg_conn();
 
-    init_file_serv_conn(file_server_list, file_server_count);
 
+	//init other server connect
+	init_file_serv_conn(file_server_list, file_server_count);
 	init_db_serv_conn(db_server_list2, db_server_count2, concurrent_db_conn_cnt);
-
 	init_login_serv_conn(login_server_list, login_server_count, ip_addr1, ip_addr2, listen_port, max_conn_cnt);
-
 	init_route_serv_conn(route_server_list, route_server_count);
+	init_push_serv_conn(push_server_list, push_server_count);
+	
 
-    init_push_serv_conn(push_server_list, push_server_count);
 	printf("now enter the event loop...\n");
-    
-    writePid();
-
+	writePid();
 	netlib_eventloop();
 
 	return 0;

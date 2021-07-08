@@ -1,3 +1,8 @@
+/*
+ * @Author: xiaominfc
+ * @Date: 2019-08-29 11:30:07
+ * @Description: control net work;
+ */
 #ifndef __NETLIB_H__
 #define __NETLIB_H__
 
@@ -28,19 +33,37 @@ int netlib_listen(
 		callback_t	callback,
 		void*		callback_data);
 
+int netlib_ssl_listen(  
+        const char* server_ip, 
+        uint16_t    port,
+        callback_t  callback,
+        void*       callback_data);
+
+int netlib_unix_listen(
+	    char * unix_socket_path,
+		callback_t  callback,
+        void*       callback_data);
+
+int netlib_unix_connect(
+	    char * unix_socket_path,
+		callback_t  callback,
+        void*       callback_data);
+
+
+
 net_handle_t netlib_connect(
 		const char*	server_ip,
 		uint16_t	port,
 		callback_t	callback,
 		void*		callback_data);
 
-int netlib_send(net_handle_t handle, void* buf, int len);
+// int netlib_send(net_handle_t handle, void* buf, int len);
 
-int netlib_recv(net_handle_t handle, void* buf, int len);
+// int netlib_recv(net_handle_t handle, void* buf, int len);
 
-int netlib_close(net_handle_t handle);
+// int netlib_close(net_handle_t handle);
 
-int netlib_option(net_handle_t handle, int opt, void* optval);
+//int netlib_option(net_handle_t handle, int opt, void* optval);
 
 int netlib_register_timer(callback_t callback, void* user_data, uint64_t interval);
 

@@ -15,31 +15,17 @@
 #include "HttpConn.h"
 #include "HttpQuery.h"
 #include "util.h"
+#include "EncDec.h"
+#include "QueryHttpConn.h"
+#include "EventSocket.h"
+CAes* pAes;
 
 #define DEFAULT_CONCURRENT_DB_CONN_CNT  2
-
-// for client connect in
-void http_callback(void* callback_data, uint8_t msg, uint32_t handle, void* pParam)
-{
-	if (msg == NETLIB_MSG_CONNECT)
-	{
-		CHttpConn* pConn = new CHttpConn();
-		pConn->OnConnect(handle);
-	}
-	else
-	{
-		log("!!!error msg: %d ", msg);
-	}
-}
 
 
 int main(int argc, char* argv[])
 {
-	if ((argc == 2) && (strcmp(argv[1], "-v") == 0)) {
-		printf("Server Version: HttpMsgServer/%s\n", VERSION);
-		printf("Server Build: %s %s\n", __DATE__, __TIME__);
-		return 0;
-	}
+	PRINTSERVERVERSION()
     
 	signal(SIGPIPE, SIG_IGN);
 	srand(time(NULL));
@@ -75,11 +61,19 @@ int main(int argc, char* argv[])
 		}
 	}
 
+
+	char* str_aes_key = config_file.GetConfigName("aesKey");
+	if (!str_aes_key || strlen(str_aes_key)!=32) {
+		log("aes key is invalied");
+		return -1;
+	}
+	pAes = new CAes(str_aes_key);
+
 	if (!listen_ip || !str_listen_port) {
 		log("config file miss, exit... ");
 		return -1;
 	}
-    
+
 	uint16_t listen_port = atoi(str_listen_port);
     
 	int ret = netlib_init();
@@ -89,7 +83,7 @@ int main(int argc, char* argv[])
     
 	CStrExplode listen_ip_list(listen_ip, ';');
 	for (uint32_t i = 0; i < listen_ip_list.GetItemCnt(); i++) {
-		ret = netlib_listen(listen_ip_list.GetItem(i), listen_port, http_callback, NULL);
+		ret = tcp_server_listen(listen_ip_list.GetItem(i), listen_port, new IMConnEventDefaultFactory<QueryHttpConn>());
 		if (ret == NETLIB_ERROR)
 			return ret;
 	}
@@ -107,10 +101,7 @@ int main(int argc, char* argv[])
 	}
 
 	printf("now enter the event loop...\n");
-    
-    writePid();
-
+	writePid();
 	netlib_eventloop();
-    
 	return 0;
 }

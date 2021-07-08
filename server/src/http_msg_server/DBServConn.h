@@ -1,20 +1,20 @@
 /*
- * DBServConn.h
- *
- *  Created on: 2013-7-8
- *      Author: ziteng@mogujie.com
+ * @File DBServConn.h
+ * @Author: xiaominfc
+ * @Date: 2019-08-29 11:30:07
+ * @Description: Conn for DBProxyServer
  */
 
 #ifndef DBSERVCONN_H_
 #define DBSERVCONN_H_
 
-#include "imconn.h"
+#include "ImPduConn.h"
 #include "ServInfo.h"
 #include "RouteServConn.h"
 
 namespace HTTP {
 
-class CDBServConn : public CImConn
+class CDBServConn : public CImPduConn
 {
 public:
 	CDBServConn();
@@ -34,6 +34,7 @@ private:
 	void _HandleStopReceivePacket(CImPdu* pPdu);
     void _HandleCreateGroupRsp(CImPdu* pPdu);
     void _HandleChangeMemberRsp(CImPdu* pPdu);
+    void _HandleMsgClient(CImPdu *pPdu);
 private:
 	bool 		m_bOpen;
 	uint32_t	m_serv_idx;

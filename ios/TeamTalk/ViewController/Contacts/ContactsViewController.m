@@ -92,8 +92,8 @@
         make.right.equalTo(ws.view);
         make.bottom.equalTo(ws.view);
     }];
-    self.tableView.contentInset =UIEdgeInsetsMake(64, 0, 49, 0);
-    [self.tableView setContentOffset:CGPointMake(0, -64)];
+    //self.tableView.contentInset =UIEdgeInsetsMake(0, 0, 49, 0);
+    //[self.tableView setContentOffset:CGPointMake(0, -64)];
     
     self.tableView.tableHeaderView=self.searchBar;
     self.tableView.separatorStyle = NO;
@@ -102,7 +102,7 @@
     [getFixgroup requestWithObject:nil Completion:^(NSArray *response, NSError *error) {
         
         [response enumerateObjectsUsingBlock:^(NSDictionary *obj, NSUInteger idx, BOOL *stop){
-            NSString *groupID = [MTTUtil changeOriginalToLocalID:(UInt32)[obj[@"groupid"] integerValue] SessionType:SessionTypeSessionTypeGroup];
+            NSString *groupID = [MTTUtil changeOriginalToLocalID:(UInt32)[obj[@"groupid"] integerValue] SessionType:SessionType_SessionTypeGroup];
             NSInteger version = [obj[@"version"] integerValue];
             MTTGroupEntity *group = [[DDGroupModule instance] getGroupByGId:groupID];
             if (group) {
@@ -261,7 +261,7 @@
 
 -(void)appBecomeActive{
     
-    self.tableView.contentInset =UIEdgeInsetsMake(64, 0, 49, 0);
+//    self.tableView.contentInset =UIEdgeInsetsMake(64, 0, 49, 0);
 }
 
 -(void)scrollToTitle:(NSNotification *)notification
@@ -293,8 +293,7 @@
 -(void)viewDidAppear:(BOOL)animated
 {
     [super viewDidAppear:animated];
-    
-    self.tableView.contentInset =UIEdgeInsetsMake(64, 0, 49, 0);
+    //self.tableView.contentInset =UIEdgeInsetsMake(0, 0, 49, 0);
 }
 
 -(void)viewDidDisappear:(BOOL)animated{
@@ -444,6 +443,13 @@
         text = [self.allKeys[section] uppercaseString];
         if(text.length == 0){
             text = @"神奇账号";
+        }else {
+            MTTDepartment* department = [[ContactsModule shareInstance]findDepartmentById:text];
+            if(department == nil) {
+                text = @"未知部门";
+            }else {
+                text = department.departName;
+            }
         }
     }
     UIView *sectionHeadView = [[UIView alloc] initWithFrame:CGRectMake(0, 0, SCREEN_WIDTH, 22)];
@@ -533,7 +539,7 @@
     if (user == nil) {
         return;
     }
-    MTTSessionEntity* session = [[MTTSessionEntity alloc] initWithSessionID:user.objID type:SessionTypeSessionTypeSingle];
+    MTTSessionEntity* session = [[MTTSessionEntity alloc] initWithSessionID:user.objID type:SessionType_SessionTypeSingle];
     [session setSessionName:user.nick];
     [[ChattingMainViewController shareInstance] showChattingContentForSession:session];
     [self pushViewController:[ChattingMainViewController shareInstance] animated:YES];
@@ -557,7 +563,7 @@
                 return;
             }
             MTTGroupEntity *group = [self.groups objectAtIndex:indexPath.row];
-            MTTSessionEntity *session = [[MTTSessionEntity alloc] initWithSessionID:group.objID type:SessionTypeSessionTypeGroup];
+            MTTSessionEntity *session = [[MTTSessionEntity alloc] initWithSessionID:group.objID type:SessionType_SessionTypeGroup];
             [session setSessionName:group.name];
             ChattingMainViewController *main = [ChattingMainViewController shareInstance];
             [main showChattingContentForSession:session];

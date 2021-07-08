@@ -9,13 +9,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "slog/slog_api.h"
+#include "slog_api.h"
+#include "version.h"
 #ifndef _WIN32
 #include <strings.h>
 #endif
 
 #include <sys/stat.h>
+#include <sys/un.h>
 #include <assert.h>
+#include <stddef.h>
 
 
 #ifdef _WIN32
@@ -27,20 +30,19 @@
 #include <sys/time.h>
 #endif
 
+
 #define NOTUSED_ARG(v) ((void)v)		// used this to remove warning C4100, unreferenced parameter
 
-/// yunfan modify end 
 class CRefObject
 {
 public:
 	CRefObject();
 	virtual ~CRefObject();
-
 	void SetLock(CLock* lock) { m_lock = lock; }
 	void AddRef();
 	void ReleaseRef();
 private:
-	int				m_refCount;
+	int	m_refCount;
 	CLock*	m_lock;
 };
 
@@ -52,9 +54,11 @@ extern CSLog g_imlog;
 // Add By ZhangYuanhao 2015-01-14 For log show the file name not the full path + filename
 #define __FILENAME__ (strrchr(__FILE__, '/') ? (strrchr(__FILE__, '/') + 1):__FILE__)
 #if defined(_WIN32) || defined(_WIN64)
-#define log(fmt, ...)  g_imlog.Info("<%s>\t<%d>\t<%s>,"fmt, __FILENAME__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
+#define log(fmt, ...)  g_imlog.Info("<%s>\t<%d>\t<%s>,"\
+	fmt, __FILENAME__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
 #else
-#define log(fmt, args...)  g_imlog.Info("<%s>|<%d>|<%s>," fmt, __FILENAME__, __LINE__, __FUNCTION__, ##args)
+#define log(fmt, args...)  g_imlog.Info("<%s>|<%d>|<%s>,"\
+	fmt, __FILENAME__, __LINE__, __FUNCTION__, ##args)
 #endif
 //#define log(fmt, ...)  g_imlog.Info("<%s>\t<%d>\t<%s>,"+fmt, __FILENAME__, __LINE__, __FUNCTION__, ##__VA_ARGS__)
 
@@ -91,5 +95,12 @@ string URLDecode(const string &sIn);
 int64_t get_file_size(const char *path);
 const char*  memfind(const char *src_str,size_t src_len, const char *sub_str, size_t sub_len, bool flag = true);
 
+
+#define PRINTSERVERVERSION() \
+	if ((argc == 2) && (strcmp(argv[1], "-v") == 0)) { \
+		printf("Server Version: %s\n", VERSION); \
+		printf("Server Build: %s %s\n", __DATE__, __TIME__); \
+		return 0; \
+	}
 
 #endif

@@ -7,6 +7,7 @@
 
 #include "ostype.h"
 #include "util.h"
+#include "EventInterface.h"
 
 enum
 {
@@ -17,7 +18,7 @@ enum
 	SOCKET_STATE_CLOSING
 };
 
-class CBaseSocket : public CRefObject
+class CBaseSocket : public CEventInterface
 {
 public:
 	CBaseSocket();
@@ -27,6 +28,7 @@ public:
 	SOCKET GetSocket() { return m_socket; }
 	void SetSocket(SOCKET fd) { m_socket = fd; }
 	void SetState(uint8_t state) { m_state = state; }
+	int GetState(){return m_state;}
 
 	void SetCallback(callback_t callback) { m_callback = callback; }
 	void SetCallbackData(void* data) { m_callback_data = data; }
@@ -34,7 +36,6 @@ public:
 	void SetRemotePort(uint16_t port) { m_remote_port = port; }
 	void SetSendBufSize(uint32_t send_size);
 	void SetRecvBufSize(uint32_t recv_size);
-
 	const char*	GetRemoteIP() { return m_remote_ip.c_str(); }
 	uint16_t	GetRemotePort() { return m_remote_port; }
 	const char*	GetLocalIP() { return m_local_ip.c_str(); }
@@ -52,18 +53,34 @@ public:
 		callback_t		callback,
 		void*			callback_data);
 
-	int Send(void* buf, int len);
 
-	int Recv(void* buf, int len);
+	int UnixListen(
+		const char* unix_socket_path,
+	    callback_t		callback,
+		void*			callback_data);
 
+	net_handle_t UnixConnect(
+		const char* unix_socket_path,
+		callback_t		callback,
+		void*			callback_data);
+	
 	int Close();
+	
+	virtual int Send(void* buf, int len);
+	virtual int Recv(void* buf, int len);
+	virtual void _AcceptNewSocket();
+	virtual void BindEvent(CBaseSocket* pSocket,uint8_t socket_event);//关联 EventInterface
+	bool Readable();
+	int CheckWriteState();
+private:
+	int bindAndListen(sockaddr* serv_addr, int size);
+	
+public:	
+	virtual void OnRead();
+	virtual void OnWrite();
+	virtual void OnClose();
 
 public:	
-	void OnRead();
-	void OnWrite();
-	void OnClose();
-
-private:	
 	int _GetErrorCode();
 	bool _IsBlock(int error_code);
 
@@ -72,21 +89,25 @@ private:
 	void _SetNoDelay(SOCKET fd);
 	void _SetAddr(const char* ip, const uint16_t port, sockaddr_in* pAddr);
 
-	void _AcceptNewSocket();
+	//void _AcceptNewSocket();
+
+public:
+	callback_t		m_callback;
+	void*			m_callback_data;
 
 private:
 	string			m_remote_ip;
 	uint16_t		m_remote_port;
 	string			m_local_ip;
 	uint16_t		m_local_port;
-
-	callback_t		m_callback;
-	void*			m_callback_data;
-
 	uint8_t			m_state;
 	SOCKET			m_socket;
 };
+//void AddBaseSocket(CBaseSocket* pSocket);
+//CBaseSocket* FindBaseSocket(net_handle_t fd);
 
-CBaseSocket* FindBaseSocket(net_handle_t fd);
+void AddEvent(net_handle_t fd, CEventInterface* event);
+void RemoveEvent(net_handle_t fd);
+CEventInterface* FindEvent(net_handle_t fd);
 
 #endif

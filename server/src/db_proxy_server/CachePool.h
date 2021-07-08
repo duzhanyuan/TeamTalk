@@ -36,21 +36,22 @@ public:
     bool isExists(string &key);
 
 	// Redis hash structure
+	bool hExists(string key, string field);
 	long hdel(string key, string field);
 	string hget(string key, string field);
 	bool hgetAll(string key, map<string, string>& ret_value);
 	long hset(string key, string field, string value);
 
 	long hincrBy(string key, string field, long value);
-    long incrBy(string key, long value);
+	long incrBy(string key, long value);
 	string hmset(string key, map<string, string>& hash);
 	bool hmget(string key, list<string>& fields, list<string>& ret_value);
-    
-    //原子加减1
-    long incr(string key);
-    long decr(string key);
 
-	// Redis list structure
+		//原子加减1
+	long incr(string key);
+	long decr(string key);
+
+		// Redis list structure
 	long lpush(string key, string value);
 	long rpush(string key, string value);
 	long llen(string key);
@@ -66,16 +67,17 @@ class CachePool {
 public:
 	CachePool(const char* pool_name, const char* server_ip, int server_port, int db_num, int max_conn_cnt);
 	virtual ~CachePool();
-
 	int Init();
-
 	CacheConn* GetCacheConn();
 	void RelCacheConn(CacheConn* pCacheConn);
+	void configAuth(const char* auth);
 
 	const char* GetPoolName() { return m_pool_name.c_str(); }
 	const char* GetServerIP() { return m_server_ip.c_str(); }
 	int GetServerPort() { return m_server_port; }
 	int GetDBNum() { return m_db_num; }
+	bool needAuth() {return m_need_auth; }
+	const char* GetAuthPassword() {return m_auth_password.c_str(); }
 private:
 	string 		m_pool_name;
 	string		m_server_ip;
@@ -84,17 +86,22 @@ private:
 
 	int			m_cur_conn_cnt;
 	int 		m_max_conn_cnt;
+
+	string      m_auth_password;
+	bool        m_need_auth;
+
 	list<CacheConn*>	m_free_list;
 	CThreadNotify		m_free_notify;
 };
 
 class CacheManager {
-public:
-	virtual ~CacheManager();
+	public:
+		virtual ~CacheManager();
 
-	static CacheManager* getInstance();
+		static CacheManager* getInstance();
 
-	int Init();
+		int Init();
+	int InitWithConfig(const char * conf);
 	CacheConn* GetCacheConn(const char* pool_name);
 	void RelCacheConn(CacheConn* pCacheConn);
 private:

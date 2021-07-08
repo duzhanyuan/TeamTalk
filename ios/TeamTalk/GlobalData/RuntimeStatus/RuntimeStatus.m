@@ -15,7 +15,7 @@
 #import "ReceiveKickoffAPI.h"
 #import "LogoutAPI.h"
 #import "DDClientState.h"
-#import "IMLogin.pb.h"
+#import "ImLogin.pbobjc.h"
 #import "AFHTTPRequestOperationManager.h"
 #import "MTTSignNotifyAPI.h"
 #import "MTTPCLoginStatusNotifyAPI.h"
@@ -45,6 +45,9 @@
         self.user = [MTTUserEntity new];
         [self registerAPI];
         [self checkUpdateVersion];
+        if([MTTUtil getLastDBVersion] < 2) {
+            [MTTUtil setDBVersion:2];
+        }
     }
     return self;
 }
@@ -52,7 +55,6 @@
 -(void)checkUpdateVersion
 {
     AFHTTPRequestOperationManager *manager = [AFHTTPRequestOperationManager manager];
-    
     manager.responseSerializer = [AFHTTPResponseSerializer serializer];
     [manager GET:@"http://tt.mogu.io/tt/ios.json" parameters:nil success:^(AFHTTPRequestOperation *operation, id responseObject) {
         

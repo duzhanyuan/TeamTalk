@@ -12,6 +12,7 @@
 #import "DDTcpServer.h"
 #import "SpellLibrary.h"
 #import "DDUserModule.h"
+#import "ContactsModule.h"
 #import "MTTUserEntity.h"
 #import "DDClientState.h"
 #import "RuntimeStatus.h"
@@ -19,6 +20,7 @@
 #import "MTTDatabaseUtil.h"
 #import "DDAllUserAPI.h"
 #import "LoginAPI.h"
+#import "DDDepartmentAPI.h"
 #import "MTTNotification.h"
 #import "SessionModule.h"
 #import "DDGroupModule.h"
@@ -92,26 +94,30 @@
                     
                     [[MTTDatabaseUtil instance] openCurrentUserDB];
                     
-                    //加载所有人信息，创建检索拼音
-                    [self p_loadAllUsersCompletion:^{
-                        
-                        if ([[SpellLibrary instance] isEmpty]) {
-                            
-                            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-                                [[[DDUserModule shareInstance] getAllMaintanceUser] enumerateObjectsUsingBlock:^(MTTUserEntity *obj, NSUInteger idx, BOOL *stop) {
-                                    [[SpellLibrary instance] addSpellForObject:obj];
-                                    [[SpellLibrary instance] addDeparmentSpellForObject:obj];
+                    [self p_loadAllDepartMentCompletion:^{
+                            //加载所有人信息，创建检索拼音
+                            [self p_loadAllUsersCompletion:^{
+                                
+                                if ([[SpellLibrary instance] isEmpty]) {
                                     
-                                }];
-                                NSArray *array =  [[DDGroupModule instance] getAllGroups];
-                                [array enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
-                                    [[SpellLibrary instance] addSpellForObject:obj];
-                                }];
-                            });
-                        }
-                    }];
+                                    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                                        [[[DDUserModule shareInstance] getAllMaintanceUser] enumerateObjectsUsingBlock:^(MTTUserEntity *obj, NSUInteger idx, BOOL *stop) {
+                                            [[SpellLibrary instance] addSpellForObject:obj];
+                                            [[SpellLibrary instance] addDeparmentSpellForObject:obj];
+                                            
+                                        }];
+                                        NSArray *array =  [[DDGroupModule instance] getAllGroups];
+                                        [array enumerateObjectsUsingBlock:^(id obj, NSUInteger idx, BOOL *stop) {
+                                            [[SpellLibrary instance] addSpellForObject:obj];
+                                        }];
+                                    });
+                                }
+                            }];
 
-                    //
+                            //
+                    }];
+                    
+                    
                     [[SessionModule instance] loadLocalSession:^(bool isok) {}];
                     
                     success(user);
@@ -157,6 +163,39 @@
 }
 
 
+-(void)p_loadAllDepartMentCompletion:(void(^)())completion
+{
+    __block NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    __block NSInteger departmentLastUpdateTime = [[defaults objectForKey:@"departmentLastUpdateTime"] integerValue];
+    [[MTTDatabaseUtil instance] getAllDepartments:^(NSArray *contacts, NSError *error) {
+        if([contacts count] > 0) {
+            [contacts enumerateObjectsUsingBlock:^(MTTDepartment* obj, NSUInteger idx, BOOL * _Nonnull stop) {
+                [[ContactsModule shareInstance] addDepartMent:obj];
+            }];
+        }
+        DMTTDepartmentAPI* api = [[DMTTDepartmentAPI alloc] init];
+        [api requestWithObject:@[@(departmentLastUpdateTime)] Completion:^(id response, NSError *error) {
+            if (!error)
+            {
+                NSArray *datas = (NSArray*)response;
+                if([datas count] > 0) {
+                    [[MTTDatabaseUtil instance] insertDepartments:datas completion:^(NSError *error) {
+                        [datas enumerateObjectsUsingBlock:^(id  _Nonnull obj, NSUInteger idx, BOOL * _Nonnull stop) {
+                            MTTDepartment* d = [MTTDepartment departmentFromDic:obj];
+                            [[ContactsModule shareInstance] addDepartMent:d];
+                        }];
+                        
+                    }];
+                    NSInteger recordTime = [[NSDate date] timeIntervalSince1970];
+                    [defaults setObject:@(recordTime) forKey:@"departmentLastUpdateTime"];
+                }
+            }
+            completion();
+        }];
+    }];
+    
+}
+
 
 /**
  *  登录成功后获取所有用户
@@ -166,76 +205,58 @@
 - (void)p_loadAllUsersCompletion:(void(^)())completion
 {
     __block NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    
-    __block NSInteger version = [[defaults objectForKey:@"alllastupdatetime"] integerValue];
+    __block NSInteger lastUpdateTime = [[defaults objectForKey:@"alllastupdatetime"] integerValue];
     [[MTTDatabaseUtil instance] getAllUsers:^(NSArray *contacts, NSError *error) {
-        if ([contacts count] !=0) {
+        
+        int contactsCount = [contacts count];
+        
+        if (contactsCount != 0) {
             [contacts enumerateObjectsUsingBlock:^(MTTUserEntity *obj, NSUInteger idx, BOOL *stop) {
                 [[DDUserModule shareInstance] addMaintanceUser:obj];
             }];
-            if (completion !=nil) {
+            if (completion != nil) {
                 completion();
             }
-        }else{
-            version=0;
-            DDAllUserAPI* api = [[DDAllUserAPI alloc] init];
-            [api requestWithObject:@[@(version)] Completion:^(id response, NSError *error) {
-                if (!error)
-                {
-                    NSUInteger responseVersion = [[response objectForKey:@"alllastupdatetime"] integerValue];
-                    if (responseVersion == version && responseVersion !=0) {
-                        
-                        return ;
-                        
-                    }
-                    [defaults setObject:@(responseVersion) forKey:@"alllastupdatetime"];
-                    NSMutableArray *array = [response objectForKey:@"userlist"];
-                    [[MTTDatabaseUtil instance] insertAllUser:array completion:^(NSError *error) {
-                        
+        }
+        
+        
+        if(contactsCount == 0) {
+            lastUpdateTime = 0;
+        }
+        
+        //在做一次请求 获取自上次以来 发生了变化的好友信息
+        DDAllUserAPI* api = [[DDAllUserAPI alloc] init];
+        [api requestWithObject:@[@(lastUpdateTime)] Completion:^(id response, NSError *error) {
+            if (!error)
+            {
+                NSUInteger responseUpdateTime = [[response objectForKey:@"alllastupdatetime"] integerValue];
+                if (responseUpdateTime == lastUpdateTime && responseUpdateTime !=0) {
+                    return ;
+                }
+                [defaults setObject:@(responseUpdateTime) forKey:@"alllastupdatetime"];
+                NSMutableArray *array = [response objectForKey:@"userlist"];
+                [[MTTDatabaseUtil instance] insertAllUser:array completion:^(NSError *error) {
+                    
+                }];
+                dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                    [array enumerateObjectsUsingBlock:^(MTTUserEntity *obj, NSUInteger idx, BOOL *stop) {
+                        [[DDUserModule shareInstance] addMaintanceUser:obj];
                     }];
-                    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-                        [array enumerateObjectsUsingBlock:^(MTTUserEntity *obj, NSUInteger idx, BOOL *stop) {
-                            [[DDUserModule shareInstance] addMaintanceUser:obj];
-                        }];
-                        
+                    if(contactsCount == 0) {
                         dispatch_async(dispatch_get_main_queue(),^{
                             if (completion !=nil) {
                                 completion();
                             }
                         });
-     
-                    });
-                    
-                    
-                }
-            }];
-        }
+                    }
+                });
+                
+                
+            }
+        }];
     }];
     
-    DDAllUserAPI* api = [[DDAllUserAPI alloc] init];
-    [api requestWithObject:@[@(version)] Completion:^(id response, NSError *error) {
-        if (!error)
-        {
-            NSUInteger responseVersion = [[response objectForKey:@"alllastupdatetime"] integerValue];
-            if (responseVersion == version && responseVersion !=0) {
-                
-                return ;
 
-            }
-            [defaults setObject:@(responseVersion) forKey:@"alllastupdatetime"];
-            NSMutableArray *array = [response objectForKey:@"userlist"];
-            [[MTTDatabaseUtil instance] insertAllUser:array completion:^(NSError *error) {
-                
-            }];
-            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-                [array enumerateObjectsUsingBlock:^(MTTUserEntity *obj, NSUInteger idx, BOOL *stop) {
-                    [[DDUserModule shareInstance] addMaintanceUser:obj];
-                }];
-            });
-            
-            
-        }
-    }];
     
 }
 

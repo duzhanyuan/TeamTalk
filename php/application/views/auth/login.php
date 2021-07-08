@@ -20,12 +20,13 @@
             $(function(){
                 $("form").submit(function(){                
                     $.post('/auth/login', {
-                        admin    : $(".admin").val(),
+                        account  : $(".admin").val(),
                         password : $(".password").val(),
                         submit   : 1
                     }, function(data) {
-                        data = $.trim(data);
-                        if(data == 'right'){
+                        
+                        //data = $.trim(data);
+                        if(data['msg'] == 'right'){
                             $(".login_mes").text('登陆成功,正在跳转...').removeClass("hide");
                             window.location.href="/";
                         }else{

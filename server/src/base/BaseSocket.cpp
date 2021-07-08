@@ -1,31 +1,31 @@
 #include "BaseSocket.h"
 #include "EventDispatch.h"
 
-typedef hash_map<net_handle_t, CBaseSocket*> SocketMap;
-SocketMap	g_socket_map;
+typedef hash_map<net_handle_t, CEventInterface*> EventMap;
+EventMap	g_event_map;
 
-void AddBaseSocket(CBaseSocket* pSocket)
+void AddEvent(net_handle_t fd, CEventInterface* event)
 {
-	g_socket_map.insert(make_pair((net_handle_t)pSocket->GetSocket(), pSocket));
+	g_event_map.insert(make_pair(fd, event));
 }
 
-void RemoveBaseSocket(CBaseSocket* pSocket)
+void RemoveEvent(net_handle_t fd)
 {
-	g_socket_map.erase((net_handle_t)pSocket->GetSocket());
+	g_event_map.erase(fd);
 }
 
-CBaseSocket* FindBaseSocket(net_handle_t fd)
+CEventInterface* FindEvent(net_handle_t fd)
 {
-	CBaseSocket* pSocket = NULL;
-	SocketMap::iterator iter = g_socket_map.find(fd);
-	if (iter != g_socket_map.end())
+	CEventInterface* event = NULL;
+	EventMap::iterator iter = g_event_map.find(fd);
+	if (iter != g_event_map.end())
 	{
-		pSocket = iter->second;
-		pSocket->AddRef();
+		event = iter->second;
+		event->AddRef();
 	}
-
-	return pSocket;
+	return event;
 }
+
 
 //////////////////////////////
 
@@ -39,6 +39,37 @@ CBaseSocket::CBaseSocket()
 CBaseSocket::~CBaseSocket()
 {
 	//log("CBaseSocket::~CBaseSocket, socket=%d\n", m_socket);
+}
+
+
+int CBaseSocket::bindAndListen(sockaddr* serv_addr,int size)
+{
+	_SetReuseAddr(m_socket);
+	_SetNonblock(m_socket);
+	int ret = ::bind(m_socket, serv_addr, size);
+	if (ret == SOCKET_ERROR)
+	{
+		log("bind failed, err_code=%d", _GetErrorCode());
+		closesocket(m_socket);
+		return NETLIB_ERROR;
+	}
+
+	ret = listen(m_socket, 64);
+	if (ret == SOCKET_ERROR)
+	{
+		log("listen failed, err_code=%d", _GetErrorCode());
+		closesocket(m_socket);
+		return NETLIB_ERROR;
+	}
+	m_state = SOCKET_STATE_LISTENING;
+	AddEvent(m_socket,this);
+#if (defined _WIN32)
+	CEventDispatch::Instance()->AddEvent(m_socket, SOCKET_READ | SOCKET_EXCEP);
+#else
+	CEventDispatch::Instance()->AddEventInterface(m_socket, SOCKET_READ | SOCKET_EXCEP,this);
+#endif
+	return NETLIB_OK;
+
 }
 
 int CBaseSocket::Listen(const char* server_ip, uint16_t port, callback_t callback, void* callback_data)
@@ -55,34 +86,16 @@ int CBaseSocket::Listen(const char* server_ip, uint16_t port, callback_t callbac
 		return NETLIB_ERROR;
 	}
 
-	_SetReuseAddr(m_socket);
-	_SetNonblock(m_socket);
+	//_SetReuseAddr(m_socket);
+	//_SetNonblock(m_socket);
 
 	sockaddr_in serv_addr;
 	_SetAddr(server_ip, port, &serv_addr);
-    int ret = ::bind(m_socket, (sockaddr*)&serv_addr, sizeof(serv_addr));
-	if (ret == SOCKET_ERROR)
-	{
-		log("bind failed, err_code=%d", _GetErrorCode());
-		closesocket(m_socket);
-		return NETLIB_ERROR;
+	int ret = bindAndListen((sockaddr*)&serv_addr,sizeof(serv_addr));
+	if(ret == NETLIB_OK){
+	   log("CBaseSocket::Listen on %s:%d", server_ip, port); 
 	}
-
-	ret = listen(m_socket, 64);
-	if (ret == SOCKET_ERROR)
-	{
-		log("listen failed, err_code=%d", _GetErrorCode());
-		closesocket(m_socket);
-		return NETLIB_ERROR;
-	}
-
-	m_state = SOCKET_STATE_LISTENING;
-
-	log("CBaseSocket::Listen on %s:%d", server_ip, port);
-
-	AddBaseSocket(this);
-	CEventDispatch::Instance()->AddEvent(m_socket, SOCKET_READ | SOCKET_EXCEP);
-	return NETLIB_OK;
+	return ret;
 }
 
 net_handle_t CBaseSocket::Connect(const char* server_ip, uint16_t port, callback_t callback, void* callback_data)
@@ -93,7 +106,6 @@ net_handle_t CBaseSocket::Connect(const char* server_ip, uint16_t port, callback
 	m_remote_port = port;
 	m_callback = callback;
 	m_callback_data = callback_data;
-
 	m_socket = socket(AF_INET, SOCK_STREAM, 0);
 	if (m_socket == INVALID_SOCKET)
 	{
@@ -113,11 +125,68 @@ net_handle_t CBaseSocket::Connect(const char* server_ip, uint16_t port, callback
 		return NETLIB_INVALID_HANDLE;
 	}
 	m_state = SOCKET_STATE_CONNECTING;
-	AddBaseSocket(this);
-	CEventDispatch::Instance()->AddEvent(m_socket, SOCKET_ALL);
-	
+	BindEvent(this,SOCKET_ALL);
 	return (net_handle_t)m_socket;
 }
+
+int CBaseSocket::UnixListen(const char* unix_socket_path,callback_t	callback,void*	callback_data)
+{
+	m_callback = callback;
+	m_callback_data = callback_data;
+	m_socket = socket(AF_UNIX,SOCK_STREAM,0);
+	if (m_socket == INVALID_SOCKET)
+	{
+		log("unix socket failed, err_code=%d", _GetErrorCode());
+		return NETLIB_INVALID_HANDLE;
+	}	
+	_SetNonblock(m_socket);
+	//_SetNoDelay(m_socket);
+	if(remove(unix_socket_path) == -1 && errno != ENOENT)
+	{
+		return NETLIB_INVALID_HANDLE;
+	}
+	unlink(unix_socket_path);
+	struct sockaddr_un addr;
+	memset(&addr, 0, sizeof(struct sockaddr_un));
+	addr.sun_family = AF_UNIX;
+	strncpy(addr.sun_path, unix_socket_path, sizeof(addr.sun_path) - 1);
+   	int ret = bindAndListen((sockaddr*)&addr,sizeof(addr));
+	if(ret == NETLIB_OK){
+		chmod(unix_socket_path,S_IRUSR|S_IWUSR|S_IXUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH);
+		log("CBaseSocket::Listen on %s", unix_socket_path); 
+	}
+	return ret;
+}
+
+net_handle_t CBaseSocket::UnixConnect(const char* unix_socket_path,callback_t callback,void* callback_data)
+{
+	m_callback = callback;
+	m_callback_data = callback_data;
+	m_socket = socket(AF_UNIX,SOCK_STREAM,0);
+	if (m_socket == INVALID_SOCKET)
+	{
+		log("unix socket failed, err_code=%d", _GetErrorCode());
+		return NETLIB_INVALID_HANDLE;
+	}
+	_SetNonblock(m_socket);
+	//_SetNoDelay(m_socket);	
+	struct sockaddr_un addr;
+	memset(&addr, 0, sizeof(struct sockaddr_un));
+	addr.sun_family = AF_UNIX;
+	strncpy(addr.sun_path, unix_socket_path, sizeof(addr.sun_path) - 1);
+	
+	int ret = connect(m_socket, (sockaddr*)&addr, sizeof(addr));
+	if ( (ret == SOCKET_ERROR) && (!_IsBlock(_GetErrorCode())) )
+	{	
+		log("connect failed, err_code=%d", _GetErrorCode());
+		closesocket(m_socket);
+		return NETLIB_INVALID_HANDLE;
+	}
+	m_state = SOCKET_STATE_CONNECTING;
+	BindEvent(this,SOCKET_ALL);
+	return (net_handle_t)m_socket;	
+}
+
 
 int CBaseSocket::Send(void* buf, int len)
 {
@@ -130,18 +199,21 @@ int CBaseSocket::Send(void* buf, int len)
 		int err_code = _GetErrorCode();
 		if (_IsBlock(err_code))
 		{
-#if ((defined _WIN32) || (defined __APPLE__))
+#if (defined _WIN32)
 			CEventDispatch::Instance()->AddEvent(m_socket, SOCKET_WRITE);
+#elif (defined __APPLE__)
+			CEventInterface* envet = FindEvent(m_socket);
+			if(event != NULL){
+				CEventDispatch::Instance()->AddEventInterface(m_socket, SOCKET_WRITE,envet);
+			}
 #endif
 			ret = 0;
-			//log("socket send block fd=%d", m_socket);
 		}
 		else
 		{
 			log("!!!send failed, error code: %d", err_code);
 		}
 	}
-
 	return ret;
 }
 
@@ -150,10 +222,46 @@ int CBaseSocket::Recv(void* buf, int len)
 	return recv(m_socket, (char*)buf, len, 0);
 }
 
+bool CBaseSocket::Readable(){
+	u_long avail = 0;
+	return !(ioctlsocket(m_socket, FIONREAD, &avail) == SOCKET_ERROR) || (avail == 0);
+}
+
+int CBaseSocket::CheckWriteState(){
+	#if ((defined _WIN32) || (defined __APPLE__))
+	CEventDispatch::Instance()->RemoveEvent(m_socket, SOCKET_WRITE);
+#endif
+
+	if (m_state == SOCKET_STATE_CONNECTING)
+	{
+		int error = 0;
+		socklen_t len = sizeof(error);
+#ifdef _WIN32
+		getsockopt(m_socket, SOL_SOCKET, SO_ERROR, (char*)&error, &len);
+#else
+		getsockopt(m_socket, SOL_SOCKET, SO_ERROR, (void*)&error, &len);
+#endif
+		if (error) {
+			//m_callback(m_callback_data, NETLIB_MSG_CLOSE, (net_handle_t)m_socket, NULL);
+			return NETLIB_MSG_CLOSE;
+		} else {
+			m_state = SOCKET_STATE_CONNECTED;
+			return NETLIB_MSG_CONFIRM;
+			//m_callback(m_callback_data, NETLIB_MSG_CONFIRM, (net_handle_t)m_socket, NULL);
+		}
+	}
+	else if(m_state != SOCKET_STATE_LISTENING)
+	{
+		return NETLIB_MSG_WRITE;
+		//m_callback(m_callback_data, NETLIB_MSG_WRITE, (net_handle_t)m_socket, NULL);
+	}
+}
+
 int CBaseSocket::Close()
 {
 	CEventDispatch::Instance()->RemoveEvent(m_socket, SOCKET_ALL);
-	RemoveBaseSocket(this);
+	//RemoveBaseSocket(this);
+	RemoveEvent(m_socket);
 	closesocket(m_socket);
 	ReleaseRef();
 
@@ -182,31 +290,8 @@ void CBaseSocket::OnRead()
 
 void CBaseSocket::OnWrite()
 {
-#if ((defined _WIN32) || (defined __APPLE__))
-	CEventDispatch::Instance()->RemoveEvent(m_socket, SOCKET_WRITE);
-#endif
-
-	if (m_state == SOCKET_STATE_CONNECTING)
-	{
-		int error = 0;
-		socklen_t len = sizeof(error);
-#ifdef _WIN32
-
-		getsockopt(m_socket, SOL_SOCKET, SO_ERROR, (char*)&error, &len);
-#else
-		getsockopt(m_socket, SOL_SOCKET, SO_ERROR, (void*)&error, &len);
-#endif
-		if (error) {
-			m_callback(m_callback_data, NETLIB_MSG_CLOSE, (net_handle_t)m_socket, NULL);
-		} else {
-			m_state = SOCKET_STATE_CONNECTED;
-			m_callback(m_callback_data, NETLIB_MSG_CONFIRM, (net_handle_t)m_socket, NULL);
-		}
-	}
-	else
-	{
-		m_callback(m_callback_data, NETLIB_MSG_WRITE, (net_handle_t)m_socket, NULL);
-	}
+	int state = CheckWriteState();
+	m_callback(m_callback_data, state, (net_handle_t)m_socket, NULL);
 }
 
 void CBaseSocket::OnClose()
@@ -307,7 +392,6 @@ void CBaseSocket::_SetAddr(const char* ip, const uint16_t port, sockaddr_in* pAd
 			log("gethostbyname failed, ip=%s", ip);
 			return;
 		}
-
 		pAddr->sin_addr.s_addr = *(uint32_t*)host->h_addr;
 	}
 }
@@ -315,31 +399,49 @@ void CBaseSocket::_SetAddr(const char* ip, const uint16_t port, sockaddr_in* pAd
 void CBaseSocket::_AcceptNewSocket()
 {
 	SOCKET fd = 0;
-	sockaddr_in peer_addr;
-	socklen_t addr_len = sizeof(sockaddr_in);
-	char ip_str[64];
-	while ( (fd = accept(m_socket, (sockaddr*)&peer_addr, &addr_len)) != INVALID_SOCKET )
+
+	socklen_t addr_len = sizeof(sockaddr);
+	sockaddr accept_addr;
+	
+	while ( (fd = accept(m_socket, (sockaddr*)&accept_addr, &addr_len)) != INVALID_SOCKET )
 	{
+		char ip_str[64] = {0};
+		uint16_t port = 0;
 		CBaseSocket* pSocket = new CBaseSocket();
-		uint32_t ip = ntohl(peer_addr.sin_addr.s_addr);
-		uint16_t port = ntohs(peer_addr.sin_port);
-
-		snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d", ip >> 24, (ip >> 16) & 0xFF, (ip >> 8) & 0xFF, ip & 0xFF);
-
-		log("AcceptNewSocket, socket=%d from %s:%d\n", fd, ip_str, port);
-
+		if(accept_addr.sa_family == AF_INET) {
+			sockaddr_in peer_addr = *((sockaddr_in*)&accept_addr);
+			uint32_t ip = ntohl(peer_addr.sin_addr.s_addr);
+			port = ntohs(peer_addr.sin_port);
+			snprintf(ip_str, sizeof(ip_str), "%d.%d.%d.%d", ip >> 24, (ip >> 16) & 0xFF, (ip >> 8) & 0xFF, ip & 0xFF);
+			log("AcceptNewSocket, socket=%d from %s:%d\n", fd, ip_str, port);
+			_SetNoDelay(fd);
+		}else if(accept_addr.sa_family == AF_UNIX) {
+			addr_len -= offsetof(struct sockaddr_un, sun_path);
+			sockaddr_un peer_addr = *((sockaddr_un*)&accept_addr);
+			memcpy(ip_str, peer_addr.sun_path, strlen(peer_addr.sun_path));
+			log("AcceptUnixSocket, socket=%d from %s:%d\n", fd, ip_str, port);
+		}
 		pSocket->SetSocket(fd);
 		pSocket->SetCallback(m_callback);
 		pSocket->SetCallbackData(m_callback_data);
 		pSocket->SetState(SOCKET_STATE_CONNECTED);
 		pSocket->SetRemoteIP(ip_str);
 		pSocket->SetRemotePort(port);
-
-		_SetNoDelay(fd);
 		_SetNonblock(fd);
-		AddBaseSocket(pSocket);
-		CEventDispatch::Instance()->AddEvent(fd, SOCKET_READ | SOCKET_EXCEP);
-		m_callback(m_callback_data, NETLIB_MSG_CONNECT, (net_handle_t)fd, NULL);
+		BindEvent(pSocket,SOCKET_READ | SOCKET_EXCEP);
+		if(m_callback != NULL){
+			m_callback(m_callback_data, NETLIB_MSG_CONNECT, (net_handle_t)fd, pSocket);
+		}
 	}
 }
 
+
+void CBaseSocket::BindEvent(CBaseSocket* pSocket,uint8_t socket_event){
+	int fd = pSocket->GetSocket();
+	AddEvent(fd,pSocket);
+#if (defined _WIN32)
+	CEventDispatch::Instance()->AddEvent(fd, socket_event);
+#else
+	CEventDispatch::Instance()->AddEventInterface(fd, socket_event,pSocket);
+#endif
+}

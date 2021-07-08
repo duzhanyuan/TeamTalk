@@ -1,0 +1,14 @@
+*CMakeCache.txt
+*CMakeFiles
+*Makefile
+*cmake_install.cmake
+*.a
+*.so
+
+*.swp
+*.dylib
+
+
+*/build/
+liblog4cxx.so.*
+libslog.so

@@ -25,6 +25,7 @@ import android.provider.Settings;
 import android.text.Editable;
 import android.text.Selection;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -68,8 +69,12 @@ import com.mogujie.tt.imservice.entity.UnreadEntity;
 import com.mogujie.tt.imservice.event.MessageEvent;
 import com.mogujie.tt.imservice.event.PriorityEvent;
 import com.mogujie.tt.imservice.event.SelectEvent;
+import com.mogujie.tt.imservice.event.TransferFileEvent;
 import com.mogujie.tt.imservice.manager.IMLoginManager;
+import com.mogujie.tt.imservice.manager.IMMessageManager;
 import com.mogujie.tt.imservice.manager.IMStackManager;
+import com.mogujie.tt.imservice.manager.IMTransferFileManager;
+import com.mogujie.tt.imservice.network.TransferFileTask;
 import com.mogujie.tt.imservice.service.IMService;
 import com.mogujie.tt.imservice.support.IMServiceConnector;
 import com.mogujie.tt.ui.adapter.MessageAdapter;
@@ -88,10 +93,12 @@ import com.mogujie.tt.ui.widget.YayaEmoGridView;
 import com.mogujie.tt.utils.CommonUtil;
 import com.mogujie.tt.utils.IMUIHelper;
 import com.mogujie.tt.utils.Logger;
+import com.mogujie.tt.utils.PathUtil;
 import com.nostra13.universalimageloader.core.ImageLoader;
 import com.nostra13.universalimageloader.core.listener.PauseOnScrollListener;
 
 import java.io.File;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -338,6 +345,24 @@ public class MessageActivity extends TTBaseActivity
         }
     }
 
+
+
+    private void showFileChooser() {
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.setType("*/*");
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+
+        try {
+            startActivityForResult(
+                    Intent.createChooser(intent, "Select a File to Upload"),
+                    SysConstant.FILE_SELECT_CODE);
+        } catch (android.content.ActivityNotFoundException ex) {
+            // Potentially direct the user to the Market with a Dialog
+            Toast.makeText(this, "Please install a File Manager.",
+                    Toast.LENGTH_SHORT).show();
+        }
+    }
+
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (RESULT_OK != resultCode)
@@ -349,6 +374,51 @@ public class MessageActivity extends TTBaseActivity
             case SysConstant.ALBUM_BACK_DATA:
                 logger.d("pic#ALBUM_BACK_DATA");
                 setIntent(data);
+                break;
+            case SysConstant.FILE_SELECT_CODE:
+                Uri uri = data.getData();
+                try {
+                    String path = PathUtil.getPath(getBaseContext(),uri);
+                    final File file = new File(path);
+                    IMTransferFileManager.instance().sendOfflineFileToUser(file, loginUser.getPeerId(), peerEntity.getPeerId(), new TransferFileTask.TransferCallBack() {
+                        @Override
+                        public void onStart(TransferFileTask task) {
+
+                        }
+
+                        @Override
+                        public void onProgressing(TransferFileTask task, float progress) {
+
+                        }
+
+                        @Override
+                        public void onFinished(TransferFileTask task) {
+
+                            uiHandler.post(new Runnable() {
+                                @Override
+                                public void run() {
+                                    TextMessage textMessage = TextMessage.buildForSend("[file:"+ file.getName() +" ]", loginUser, peerEntity);
+                                    IMMessageManager.instance().sendText(textMessage);
+                                    pushList(textMessage);
+                                    scrollToBottomListItem();
+                                }
+                            });
+
+                        }
+
+                        @Override
+                        public void onCanceled(TransferFileTask task, String msg) {
+
+                        }
+                    });
+                } catch (URISyntaxException e) {
+                    e.printStackTrace();
+                }
+
+                Log.i("file", "File Uri: " + uri.toString());
+                // Get the path
+                //String path = FileUtils.,
+
                 break;
         }
         super.onActivityResult(requestCode, resultCode, data);
@@ -397,6 +467,10 @@ public class MessageActivity extends TTBaseActivity
         }
     }
 
+    public void onEvent(TransferFileEvent event){
+
+    }
+
     public void onEventMainThread(MessageEvent event) {
         MessageEvent.Event type = event.getEvent();
         MessageEntity entity = event.getMessageEntity();
@@ -435,7 +509,9 @@ public class MessageActivity extends TTBaseActivity
                 }
             }
             break;
+
         }
+
     }
 
     /**
@@ -643,6 +719,7 @@ public class MessageActivity extends TTBaseActivity
         View takeCameraBtn = findViewById(R.id.take_camera_btn);
         takePhotoBtn.setOnClickListener(this);
         takeCameraBtn.setOnClickListener(this);
+        findViewById(R.id.take_file_btn).setOnClickListener(this);
 
         //EMO_LAYOUT
         emoLayout = (LinearLayout) findViewById(R.id.emo_layout);
@@ -894,6 +971,9 @@ public class MessageActivity extends TTBaseActivity
                 scrollToBottomListItem();
             }
             break;
+            case R.id.take_file_btn:
+                showFileChooser();
+                break;
             case R.id.show_emo_btn: {
                 /**yingmu 调整成键盘输出*/
                 recordAudioBtn.setVisibility(View.GONE);

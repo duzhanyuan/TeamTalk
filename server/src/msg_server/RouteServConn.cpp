@@ -22,6 +22,8 @@
 #include "IM.Server.pb.h"
 #include "IM.SwitchService.pb.h"
 #include "IM.File.pb.h"
+#include "EventSocket.h"
+
 using namespace IM::BaseDefine;
 
 static ConnMap_t g_route_server_conn_map;
@@ -34,6 +36,10 @@ static CGroupChat* s_group_chat = NULL;
 
 void route_server_conn_timer_callback(void* callback_data, uint8_t msg, uint32_t handle, void* pParam)
 {
+	(void)callback_data;
+	(void)msg;
+	(void)handle;
+	(void)pParam;
 	ConnMap_t::iterator it_old;
 	CRouteServConn* pConn = NULL;
 	uint64_t cur_time = get_tick_count();
@@ -139,7 +145,8 @@ void CRouteServConn::Connect(const char* server_ip, uint16_t server_port, uint32
 	log("Connecting to RouteServer %s:%d ", server_ip, server_port);
 
 	m_serv_idx = idx;
-	m_handle = netlib_connect(server_ip, server_port, imconn_callback, (void*)&g_route_server_conn_map);
+	m_handle = tcp_client_conn(server_ip,server_port,this);
+	//m_handle = netlib_connect(server_ip, server_port, imconn_callback, (void*)&g_route_server_conn_map);
 
 	if (m_handle != NETLIB_INVALID_HANDLE) {
 		g_route_server_conn_map.insert(make_pair(m_handle, this));
@@ -152,7 +159,7 @@ void CRouteServConn::Close()
 
 	m_bOpen = false;
 	if (m_handle != NETLIB_INVALID_HANDLE) {
-		netlib_close(m_handle);
+		CImConn::Close();
 		g_route_server_conn_map.erase(m_handle);
 	}
 
@@ -246,12 +253,12 @@ void CRouteServConn::HandlePdu(CImPdu* pPdu)
             break;
         case CID_BUDDY_LIST_SIGN_INFO_CHANGED_NOTIFY:
             _HandleSignInfoChangedNotify(pPdu);
+            break;
         case CID_GROUP_CHANGE_MEMBER_NOTIFY:
             s_group_chat->HandleGroupChangeMemberBroadcast(pPdu);
             break;
         case CID_FILE_NOTIFY:
             s_file_handler->HandleFileNotify(pPdu);
-            break;
             break;
         default:
             log("unknown cmd id=%d ", pPdu->GetCommandId());

@@ -9,9 +9,13 @@
 #import "MTTUserEntity.h"
 #import "NSDictionary+Safe.h"
 #import "PublicProfileViewControll.h"
-#define USER_PRE @"user_"
 #import "MTTDatabaseUtil.h"
-#import "IMBuddy.pb.h"
+#import "ImBuddy.pbobjc.h"
+#import "ImBaseDefine.pbobjc.h"
+
+#define USER_PRE @"user_"
+
+
 @implementation MTTUserEntity
 - (id)initWithUserID:(NSString*)userID name:(NSString*)name nick:(NSString*)nick avatar:(NSString*)avatar userRole:(NSInteger)userRole userUpdated:(NSUInteger)updated
 {
@@ -188,8 +192,8 @@
         self.objID = [[self class] pbUserIdToLocalID:pbUser.userId];
         self.name  = pbUser.userRealName;
         self.nick  = pbUser.userNickName;
-        self.avatar= pbUser.avatarUrl;
-        self.department = @(pbUser.departmentId);
+        self.avatar= pbUser.avatarURL;
+        self.department = [@(pbUser.departmentId) stringValue];
         self.departId = @"";
         self.telphone = pbUser.userTel;
         self.sex =   pbUser.userGender;
@@ -203,7 +207,8 @@
 
 -(NSString *)getAvatarUrl
 {
-    return [NSString stringWithFormat:@"%@_100x100.jpg",self.avatar];
+    //return [NSString stringWithFormat:@"%@_100x100.jpg",self.avatar];
+    return self.avatar;
 }
 -(NSString *)get300AvatarUrl
 {

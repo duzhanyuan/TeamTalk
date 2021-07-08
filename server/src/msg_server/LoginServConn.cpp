@@ -2,7 +2,7 @@
  * LoginServConn.cpp
  *
  *  Created on: 2013-7-8
- *      Author: ziteng@mogujie.com
+ *	  Author: ziteng@mogujie.com
  */
 
 
@@ -13,6 +13,8 @@
 #include "IM.Server.pb.h"
 #include "ImPduBase.h"
 #include "public_define.h"
+#include "EventSocket.h"
+
 using namespace IM::BaseDefine;
 
 static ConnMap_t g_login_server_conn_map;
@@ -27,6 +29,10 @@ static uint32_t g_max_conn_cnt;
 
 void login_server_conn_timer_callback(void* callback_data, uint8_t msg, uint32_t handle, void* pParam)
 {
+	(void)callback_data;
+	(void)msg;
+	(void)handle;
+	(void)pParam;
 	ConnMap_t::iterator it_old;
 	CLoginServConn* pConn = NULL;
 	uint64_t cur_time = get_tick_count();
@@ -101,7 +107,8 @@ void CLoginServConn::Connect(const char* server_ip, uint16_t server_port, uint32
 {
 	log("Connecting to LoginServer %s:%d ", server_ip, server_port);
 	m_serv_idx = serv_idx;
-	m_handle = netlib_connect(server_ip, server_port, imconn_callback, (void*)&g_login_server_conn_map);
+	
+	m_handle = tcp_client_conn(server_ip,server_port,this);  
 
 	if (m_handle != NETLIB_INVALID_HANDLE) {
 		g_login_server_conn_map.insert(make_pair(m_handle, this));
@@ -113,7 +120,7 @@ void CLoginServConn::Close()
 	serv_reset<CLoginServConn>(g_login_server_list, g_login_server_count, m_serv_idx);
 
 	if (m_handle != NETLIB_INVALID_HANDLE) {
-		netlib_close(m_handle);
+		CImConn::Close();
 		g_login_server_conn_map.erase(m_handle);
 	}
 
@@ -127,23 +134,22 @@ void CLoginServConn::OnConfirm()
 	g_login_server_list[m_serv_idx].reconnect_cnt = MIN_RECONNECT_CNT / 2;
 
 	uint32_t cur_conn_cnt = 0;
-	uint32_t shop_user_cnt = 0;
-    
-    list<user_conn_t> user_conn_list;
-    CImUserManager::GetInstance()->GetUserConnCnt(&user_conn_list, cur_conn_cnt);
+	//uint32_t shop_user_cnt = 0;
+	list<user_conn_t> user_conn_list;
+	CImUserManager::GetInstance()->GetUserConnCnt(&user_conn_list, cur_conn_cnt);
 	char hostname[256] = {0};
 	gethostname(hostname, 256);
-    IM::Server::IMMsgServInfo msg;
-    msg.set_ip1(g_msg_server_ip_addr1);
-    msg.set_ip2(g_msg_server_ip_addr2);
-    msg.set_port(g_msg_server_port);
-    msg.set_max_conn_cnt(g_max_conn_cnt);
-    msg.set_cur_conn_cnt(cur_conn_cnt);
-    msg.set_host_name(hostname);
-    CImPdu pdu;
-    pdu.SetPBMsg(&msg);
-    pdu.SetServiceId(SID_OTHER);
-    pdu.SetCommandId(CID_OTHER_MSG_SERV_INFO);
+	IM::Server::IMMsgServInfo msg;
+	msg.set_ip1(g_msg_server_ip_addr1);
+	msg.set_ip2(g_msg_server_ip_addr2);
+	msg.set_port(g_msg_server_port);
+	msg.set_max_conn_cnt(g_max_conn_cnt);
+	msg.set_cur_conn_cnt(cur_conn_cnt);
+	msg.set_host_name(hostname);
+	CImPdu pdu;
+	pdu.SetPBMsg(&msg);
+	pdu.SetServiceId(SID_OTHER);
+	pdu.SetCommandId(CID_OTHER_MSG_SERV_INFO);
 	SendPdu(&pdu);
 }
 
@@ -156,11 +162,11 @@ void CLoginServConn::OnClose()
 void CLoginServConn::OnTimer(uint64_t curr_tick)
 {
 	if (curr_tick > m_last_send_tick + SERVER_HEARTBEAT_INTERVAL) {
-        IM::Other::IMHeartBeat msg;
-        CImPdu pdu;
-        pdu.SetPBMsg(&msg);
-        pdu.SetServiceId(SID_OTHER);
-        pdu.SetCommandId(CID_OTHER_HEARTBEAT);
+		IM::Other::IMHeartBeat msg;
+		CImPdu pdu;
+		pdu.SetPBMsg(&msg);
+		pdu.SetServiceId(SID_OTHER);
+		pdu.SetCommandId(CID_OTHER_HEARTBEAT);
 		SendPdu(&pdu);
 	}
 
@@ -172,5 +178,6 @@ void CLoginServConn::OnTimer(uint64_t curr_tick)
 
 void CLoginServConn::HandlePdu(CImPdu* pPdu)
 {
+	(void)pPdu;
 	//printf("recv pdu_type=%d ", pPdu->GetPduType());
 }
